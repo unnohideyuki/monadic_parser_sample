@@ -26,7 +26,11 @@ INFIXL  { Infixl _ }
 
 %%
 program :: { Integer }
+<<<<<<< HEAD
 program:        decs exp        { $2 }
+=======
+program:        decs exp 	{ $2 }
+>>>>>>> a2bb8af4d0f1dfdd5d493fc6cb970a93b716e8cc
 
 decs:           dec ';' decs    { () }
  |              {- empty -}     { () }
@@ -86,3 +90,7 @@ report ret =
     Right i -> putStrLn $ show i
     Left s  -> putStrLn s
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> a2bb8af4d0f1dfdd5d493fc6cb970a93b716e8cc
