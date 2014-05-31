@@ -1,0 +1,6 @@
+*~
+*.hi
+*.o
+Lexer.hs
+Parser.hs
+*.exe
