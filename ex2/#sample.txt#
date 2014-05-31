@@ -1,7 +1,0 @@
-infixl 0 + plus;
-infixl 0 - minus;
-infixl 1 * times;
-infixl 1 / div;
-
-1 + 2 * 3 - 8 / (1 + 1)
-
