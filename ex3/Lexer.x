@@ -50,7 +50,7 @@ alexEOF = Alex $
 	    if depth == 0 then
 	      Right (s, Eof)
             else
-	      Left "Comment reached to the EOF."
+	      Left "unterminated `{-'"
           )
 
 data Token = Token (String, AlexPosn)
