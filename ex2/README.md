@@ -1,7 +1,7 @@
 ﻿Monadic Parser の例
 ===================
 
-Happy と Alex を用いた Monadic Perser の例として、以下のような小さな言語を処理するパーサを作ってみました。
+Happy と Alex を用いた Monadic Parser の例として、以下のような小さな言語を処理するパーサを作ってみました。
 Parser/Lexer が状態を持っていて、構文解析の結果に応じて状態が変わります。Haskell で状態を扱うには、モナドというわけです。
 
 ## 今回作るもの
