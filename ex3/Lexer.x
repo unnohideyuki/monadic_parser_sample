@@ -9,7 +9,7 @@ tokens :-
 $white+                         ;
 
 "{-"				{ mkL LOpenComment }
-.* "-}"				{ mkL LCloseComment }
+[^$white]*"-}"			{ mkL LCloseComment }
 
 [^$white]+			{ mkL LToken }
 
