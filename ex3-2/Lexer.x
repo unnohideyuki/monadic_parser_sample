@@ -35,7 +35,7 @@ mkL c (pos, _, _, str) len =
                         case alexMonadScan of
                           Alex f -> 
                             f s{ alex_ust=ust{comment_depth = depth + 1}
-                               , alex_scd=1}
+                               , alex_scd=comment}
                       )
 
       LCloseComment -> Alex $
