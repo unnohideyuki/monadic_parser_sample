@@ -1,0 +1,62 @@
+ex4 途中経過
+
+Haskell Report 2010 の chap 2 Lexical Structure にある例をやってみる。
+ex4 はラインコメントをサポートしないので、ラインコメントのみ取り除いた：
+
+module AStack( Stack, push, pop, top, size ) where
+data Stack a = Empty
+             | MkStack a (Stack a)
+
+push :: a -> Stack a -> Stack a
+push x s = MkStack x s
+
+size :: Stack a -> Int
+size s = length (stkToLst s)  where
+           stkToLst  Empty         = []
+           stkToLst (MkStack x s)  = x:xs where xs = stkToLst s
+
+pop :: Stack a -> (a, Stack a)
+pop (MkStack x s)
+  = (x, case s of r -> i r where i x = x)
+
+top :: Stack a -> a
+top (MkStack x s) = x
+
+これを、今日の版で処理した結果は以下：
+
+$ ./Parser.exe <../testcases/haskellch2_fig2.2.hs
+ module AStack( Stack, push, pop, top, size ) where
+{ data Stack a = Empty | MkStack a (Stack a)
+; push :: a -> Stack a -> Stack a
+; push x s = MkStack x s
+; size :: Stack a -> Int
+; size s = length (stkToLst s) where
+{ stkToLst Empty = []
+; stkToLst (MkStack x s) = x:xs where
+{ xs = stkToLst s
+} pop
+} :: Stack a -> (a, Stack a)
+; pop (MkStack x s) = (x, case s of
+{ r -> i r where
+{ i x = x)
+} top
+} :: Stack a -> a
+; top (MkStack x s) = x
+
+Parser と協調して処理しなければならないと思われるのが、
+"}" が合法な場所に、ほかの違法なトークンがきたときに "}" が挿入されるケースと、
+直後に新しいアイテムが来たり、インデントレベルが下がって、空リストが挿入されるケース。
+
+また、インデントレベルが一度に複数下がる（複数の "}" が挿入される）ケースにも
+対応できていない。
+
+これらは、Parser で対応するコードを書いてみることにする。
+# Parser から、alexUserState を操作できるんだっけ？
+
+また、lexer については、トークンとトークンの間に空白が来ないケースに要注意。
+トークンを pending したときには、継続文字列を細工して、空白を増やしたりしたらダメかな？
+(pos を -1 して、str を " ":str でおきかえる）
+
+（つづく）
+
+
