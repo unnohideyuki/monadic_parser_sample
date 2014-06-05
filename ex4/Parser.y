@@ -15,6 +15,7 @@ import Lexer
 
 %token
 TOKEN   { Token ($$, _) }
+SP_TOK  { Token' ($$, _) }
 "{"     { OBrace _ }
 "}"     { CBrace _ }
 vobrace { VOBrace _ }
@@ -30,13 +31,21 @@ tokens_t:  token tokens_t       { $1 ++ $2 }
  |         {- empty -}          { [] }
 
 token:     TOKEN                { [$1] }
- |         "{"                  { ["{"] }
- |         "}"                  { ["}"] }
- |         vobrace              { ["{"] }
- |         vcbrace              { ["}"] }
  |         "(" tokens ")"       { "(" : ($2 ++ [")"]) }
+ |         SP_TOK llist         { $1 : $2 }
+
+
+llist:    "{" tokens "}"                { ["{"] ++ $2 ++ ["}"] }
+ |         vobrace tokens vcbrace       { ["{"] ++ $2 ++ ["}"] }
+ |         vobrace tokens               {% Alex (\s -> missing_vcbrace s $2) }
+
 
 {
+missing_vcbrace s@AlexState{alex_ust=t@AlexUserState{indent_levels=lvs}} toks =
+  case lvs of
+    [] -> Left $ "fatal error: " ++ show toks
+    _:lvs' -> Right (s{alex_ust=t{indent_levels=lvs'}}, ["{"] ++ toks ++ ["}"])
+  
 lexwrap :: (Token -> Alex a) -> Alex a
 lexwrap = (alexMonadScan >>=)
 

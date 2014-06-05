@@ -7,7 +7,8 @@ import Debug.Trace
 
 tokens :-
 
-<0> $white                              { white_space } 
+<0> \t                                  { white_space } 
+<0> [$white # \t]+                      { white_space } 
 
 <0,comment> "{-"                        { mkL LOpenComment }
 <comment> [^$white]*"-}"                { mkL LCloseComment }
@@ -99,7 +100,7 @@ mkL c (pos, _, _, str) len =
       -- where, let, do or of with the default startcode.
       LLayoutKeyword -> Alex $
         (\s@AlexState{ alex_ust=ust } ->
-          Right (s{ alex_ust=ust{ morrow=True }}, Token (t, pos)))
+          Right (s{ alex_ust=ust{ morrow=True }}, Token' (t, pos)))
 
 -- other_token : all other strings with the startcode == 0 
 other_token :: AlexInput -> Int -> Alex Token
@@ -198,6 +199,7 @@ alexEOF = Alex $
           )
 
 data Token = Token (String, AlexPosn)
+           | Token' (String, AlexPosn)
            | OBrace AlexPosn
            | CBrace AlexPosn
            | VOBrace AlexPosn
