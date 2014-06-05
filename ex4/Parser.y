@@ -1,4 +1,8 @@
 {
+{- The goal of this code is to be a compact example to show the way to do 
+   the Haskell layout using alex+happy monadic parser.
+   So, rules are far from enough to analize the language.
+-}
 module Main where
 import Lexer
 }
@@ -13,21 +17,24 @@ import Lexer
 TOKEN   { Token ($$, _) }
 "{"     { OBrace _ }
 "}"     { CBrace _ }
-vobrace { VOBrace _}
-vcbrace { VCBrace _}
+vobrace { VOBrace _ }
+vcbrace { VCBrace _ }
+"("     { OParen _ }
+")"     { CParen _ }
 
 %%
-tokens:    token tokens_t       { $1 : $2 }
+tokens:    token tokens_t       { $1 ++ $2 }
  |         {- empty -}          { [] }
 
-tokens_t:  token tokens_t       { $1 : $2 }
+tokens_t:  token tokens_t       { $1 ++ $2 }
  |         {- empty -}          { [] }
 
-token:     TOKEN                { $1 }
- |         "{"                  { "{" }
- |         "}"                  { "}" }
- |         vobrace              { "{" }
- |         vcbrace              { "}" }
+token:     TOKEN                { [$1] }
+ |         "{"                  { ["{"] }
+ |         "}"                  { ["}"] }
+ |         vobrace              { ["{"] }
+ |         vcbrace              { ["}"] }
+ |         "(" tokens ")"       { "(" : ($2 ++ [")"]) }
 
 {
 lexwrap :: (Token -> Alex a) -> Alex a

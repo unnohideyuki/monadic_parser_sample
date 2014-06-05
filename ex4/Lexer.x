@@ -17,24 +17,26 @@ tokens :-
 
 <0,braced> "{"                          { mkL LOBrace }
 <braced>   "}"                          { mkL LCBrace }
+<0,braced> "("                          { mkL LOParen }
+<0,braced> ")"                          { mkL LCParen }
 <braced>   $white                       { skip }
 <braced>   [^$white]+                   { mkL LToken }
 
-<0> [^$white]+                          { other_token }
+<0> [^ $white \( \) \{ \}]+         { other_token }
 
 {
 data LexemeClass = LToken | LOpenComment | LCloseComment | LOBrace | LCBrace 
-                 | LLayoutKeyword
+                 | LOParen | LCParen | LLayoutKeyword
                    deriving (Eq, Show)
 
 -- white_space : white spaces with the startcode == 0
 white_space :: AlexInput -> Int -> Alex Token
 white_space (pos, _, _, _) len = Alex f
   where
-    f s@AlexState{alex_ust=t@AlexUserState{pending_token=pend_tok}} =
-      case pend_tok of
-        Just tok -> Right (s{alex_ust=t{pending_token=Nothing}}, tok)
-        Nothing  -> case alexMonadScan of Alex f -> f s
+    f s@AlexState{alex_ust=t@AlexUserState{pending_tokens=pend_toks}} =
+      case pend_toks of
+        tok:toks -> Right (s{alex_ust=t{pending_tokens=toks}}, tok)
+        [] -> case alexMonadScan of Alex f -> f s
 
 -- mkL
 mkL :: LexemeClass -> AlexInput -> Int -> Alex Token
@@ -43,21 +45,17 @@ mkL c (pos, _, _, str) len =
     t = take len str
   in
     case c of
-      -- tokens with in explicit braces (startcode == braced)
+      -- tokens with between explicit braces (startcode == braced)
       LToken -> Alex $ (\s -> Right (s, Token (t, pos)))
+      
+      -- parentheses
+      LOParen -> Alex $ (\s -> Right (s, OParen pos))
+      LCParen -> Alex $ (\s -> Right (s, CParen pos))
 
-      -- "{-" starts a comment, and also behave as a valid white space, 
-      -- outputs pending token if exists.
+      -- "{-" starts a comment
       LOpenComment -> Alex $
-          (\s@AlexState{alex_ust=ust@AlexUserState{ comment_depth=depth
-                                                  , pending_token = token }} -> 
-              case token of
-                Just tok -> Right (s{ alex_ust=ust{ comment_depth = depth + 1
-                                                  , pending_token = Nothing}
-                                    , alex_scd=comment
-                                    },
-                                   tok)
-                Nothing -> case alexMonadScan of
+          (\s@AlexState{alex_ust=ust@AlexUserState{ comment_depth=depth }} -> 
+                case alexMonadScan of
                   Alex f -> f s{ alex_ust=ust{comment_depth = depth + 1}
                                , alex_scd=comment
                                }
@@ -106,43 +104,66 @@ mkL c (pos, _, _, str) len =
 other_token :: AlexInput -> Int -> Alex Token
 other_token (pos, _, _, str) len =
   let
-    t = take len str
-    token = Token (t, pos)
+    tok_str = take len str
+    token = Token (tok_str, pos)
+    
+    additional_pops col lvs pos = 
+      let
+        apop' col n [] ptoks = (n, [], ptoks)
+        apop' col n (l:lvs) ptoks =
+          if l == -1 || col > l then
+            (n, l:lvs, ptoks)
+          else
+            if col == l then
+              (n + 1, l:lvs, Token (";", pos):ptoks)
+            else {- col < l -}
+              apop' col (n+1) lvs (VCBrace pos:ptoks)
+      in
+       apop' col 0 lvs []
+    
     f s@AlexState{alex_ust=t@AlexUserState{ indent_levels = lv:lvs
                                           , morrow = morrow
-                                          }} =
+                                          , pending_tokens = ptoks
+                                          }
+                 } =
       case pos of
         AlexPn _ line col ->
           let
-            (t', tok) = if morrow then
+            (t', tok, npend) = 
+              if morrow then
                             if col > lv then
                               (t{ indent_levels = col:lv:lvs
                                 , morrow = False 
-                                , pending_token = Just token},
-                               VOBrace pos)
+                                , pending_tokens = token:ptoks},
+                               VOBrace pos,
+                               1)
                             else
                               if col == lv then
                                 (t{ morrow = False
-                                  , pending_token = Just token},
-                                 Token (";", pos))
+                                  , pending_tokens = token:ptoks},
+                                 Token (";", pos),
+                                 1)
                               else
                                 (t{ indent_levels = lvs
                                   , morrow = False
-                                  , pending_token = Just token},
-                                 VCBrace pos)
+                                  , pending_tokens = token:ptoks},
+                                 VCBrace pos,
+                                 1)
                         else
                             if col > lv then
-                              (t, token)
+                              (t, token, 0)
                             else
                               if col == lv then
-                                (t{pending_token = Just token},
-                                 Token (";", pos))
+                                (t{pending_tokens = token:ptoks},
+                                 Token (";", pos),
+                                 1)
                               else
                                 (t{indent_levels = lvs
-                                  , pending_token = Just token},
-                                 VCBrace pos)
-          in
-            Right (s{alex_ust=t'}, tok)
+                                  , pending_tokens = token:ptoks},
+                                 VCBrace pos,
+                                 1)           
+          in 
+           Right (s{alex_ust=t'}, tok)
   in
     Alex f
 
@@ -162,10 +183,18 @@ data Token = Token (String, AlexPosn)
            | CBrace AlexPosn
            | VOBrace AlexPosn
            | VCBrace AlexPosn
+           | OParen AlexPosn
+           | CParen AlexPosn
            | Eof
 
 instance Show Token where
     show (Token (s, pos)) = show s ++ prettyAlexPosn pos
+    show (OBrace pos) = show "{" ++ prettyAlexPosn pos
+    show (CBrace pos) = show "}" ++ prettyAlexPosn pos
+    show (VOBrace pos) = show "v{" ++ prettyAlexPosn pos
+    show (VCBrace pos) = show "v}" ++ prettyAlexPosn pos
+    show (OParen pos) = show "(" ++ prettyAlexPosn pos
+    show (CParen pos) = show ")" ++ prettyAlexPosn pos
     show Eof              = "[EOF]"
 
 prettyAlexPosn (AlexPn _ line col) = 
@@ -174,13 +203,13 @@ prettyAlexPosn (AlexPn _ line col) =
 data AlexUserState = AlexUserState { comment_depth :: Int 
                                    , indent_levels :: [Int]
                                    , morrow :: Bool
-                                   , pending_token :: Maybe Token
+                                   , pending_tokens :: [Token]
                                    }
 
 alexInitUserState :: AlexUserState
 alexInitUserState = AlexUserState { comment_depth = 0 
                                   , indent_levels = [0]
                                   , morrow = False
-                                  , pending_token = Nothing
+                                  , pending_tokens = []
                                   }
 }
