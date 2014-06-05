@@ -1,0 +1,36 @@
+ひとまず動くようになった。
+
+$ ./Parser < ../testcases/haskellch2_fig2.2.hs
+ module AStack ( Stack, push, pop, top, size ) where
+{ data Stack a = Empty | MkStack a ( Stack a )
+; push :: a -> Stack a -> Stack a
+; push x s = MkStack x s
+; size :: Stack a -> Int
+; size s = length ( stkToLst s ) where
+{ stkToLst Empty = []
+; stkToLst ( MkStack x s ) = x:xs where
+{ xs = stkToLst s } }
+; pop :: Stack a -> ( a, Stack a )
+; pop ( MkStack x s ) = ( x, case s of
+{ r -> i r where
+{ i x = x } } )
+; top :: Stack a -> a
+; top ( MkStack x s ) = x }
+
+保留したトークンは、後続の空白を読んだ機会に吐き出すことにしたので、保留するとには、
+適当な数の空白を push することにした。これによって、かならず吐き出されることが保証でき、
+かつ、吐き出し処理を空白のアクションいっかしょにまとめることができた。
+
+Haskell のレイアウト規則では、"}" が valid な場所に他のトークンが来たために構文エラーとなる
+場合には "}" を挿入することになっている。これは、Lexer だけでは処理できないため、Parser 側で
+VCBrace の欠落を許容するようにして、欠落ケースを処理させている。
+
+未実装：
+
+where, let, do or of 直後の brace 以外の lexeme がカレント以下のインデントレベルだった
+場合に、空のリストを挿入する処理がまだ。
+
+
+テスト（todo）：
+  コメントが行頭にあるケースにインデントを適切に数えられているか。
+  もとのソースで、トークン間に空白がないケース

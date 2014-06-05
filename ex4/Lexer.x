@@ -1,14 +1,18 @@
 {
 module Lexer where
-import Debug.Trace
 }
 
 %wrapper "monadUserState"
 
 tokens :-
 
-<0> \t                                  { white_space } 
-<0> [$white # \t]+                      { white_space } 
+
+<0> \t          { {- Tabs should not be merged because appropriate number of
+                     tabs are inserted and used to output pending tokens.
+                  -}
+                  white_space 
+                } 
+<0> [$white # \t]+                      { skip } 
 
 <0,comment> "{-"                        { mkL LOpenComment }
 <comment> [^$white]*"-}"                { mkL LCloseComment }
@@ -150,7 +154,6 @@ other_token (pos, _, _, str) len =
                                 let
                                   (n, lvs', ptoks') = additional_pops col lvs pos
                                 in
-                                 trace (show (n, lvs', ptoks'))
                                  (t{ indent_levels = lvs'
                                    , morrow = False
                                    , pending_tokens = ptoks'++(token:ptoks)},
@@ -168,7 +171,6 @@ other_token (pos, _, _, str) len =
                                 let
                                   (n, lvs', ptoks') = additional_pops col lvs pos
                                 in
-                                 trace (show (n, lvs', ptoks'))
                                  (t{ indent_levels = lvs'
                                    , pending_tokens = ptoks'++ (token:ptoks)},
                                   VCBrace pos,
@@ -176,7 +178,7 @@ other_token (pos, _, _, str) len =
                                  
             new_state npend ust' =
               let
-                inp' = (take npend ['\t'..]) ++ inp
+                inp' = (take npend ['\t','\t'..]) ++ inp
               in
                s{alex_ust=t', alex_inp=inp'}
           in 
@@ -190,10 +192,10 @@ alexEOF :: Alex Token
 alexEOF = Alex $ 
           (\s@AlexState{alex_ust=ust@AlexUserState{comment_depth=depth, pending_tokens=ptoks}} -> 
             if depth == 0 then
-              if length ptoks == 0 then
+              if True || length ptoks == 0 then
                 Right (s, Eof)
               else
-                Left "pend"
+                Left $ "fatal: pending tokens left: " ++ show ptoks
             else
               Left "unterminated `{-'"
           )
