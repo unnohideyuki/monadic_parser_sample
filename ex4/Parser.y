@@ -50,7 +50,7 @@ main = getContents >>= pp . parse
 
 pp (Right []) = putStr "\n"
 pp (Right (x:xs)) = do
-  if x == ";" || x == "{" || x == "}" then putStr "\n" else putStr " "
+  if x == ";" || x == "{" then putStr "\n" else putStr " "
   putStr x
   pp $ Right xs
 pp (Left s) = putStrLn s

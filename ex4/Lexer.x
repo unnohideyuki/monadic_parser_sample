@@ -1,12 +1,13 @@
 {
 module Lexer where
+import Debug.Trace
 }
 
 %wrapper "monadUserState"
 
 tokens :-
 
-<0> $white+                             { white_space } 
+<0> $white                              { white_space } 
 
 <0,comment> "{-"                        { mkL LOpenComment }
 <comment> [^$white]*"-}"                { mkL LCloseComment }
@@ -115,16 +116,17 @@ other_token (pos, _, _, str) len =
             (n, l:lvs, ptoks)
           else
             if col == l then
-              (n + 1, l:lvs, Token (";", pos):ptoks)
+              (n + 1, l:lvs, ptoks ++ [Token (";", pos)])
             else {- col < l -}
-              apop' col (n+1) lvs (VCBrace pos:ptoks)
+              apop' col (n+1) lvs $ ptoks ++ [VCBrace pos]
       in
        apop' col 0 lvs []
     
     f s@AlexState{alex_ust=t@AlexUserState{ indent_levels = lv:lvs
                                           , morrow = morrow
                                           , pending_tokens = ptoks
-                                          }
+                                          },
+                  alex_inp=inp
                  } =
       case pos of
         AlexPn _ line col ->
@@ -144,11 +146,15 @@ other_token (pos, _, _, str) len =
                                  Token (";", pos),
                                  1)
                               else
-                                (t{ indent_levels = lvs
-                                  , morrow = False
-                                  , pending_tokens = token:ptoks},
-                                 VCBrace pos,
-                                 1)
+                                let
+                                  (n, lvs', ptoks') = additional_pops col lvs pos
+                                in
+                                 trace (show (n, lvs', ptoks'))
+                                 (t{ indent_levels = lvs'
+                                   , morrow = False
+                                   , pending_tokens = ptoks'++(token:ptoks)},
+                                  VCBrace pos,
+                                  n+1)
                         else
                             if col > lv then
                               (t, token, 0)
@@ -158,12 +164,22 @@ other_token (pos, _, _, str) len =
                                  Token (";", pos),
                                  1)
                               else
-                                (t{indent_levels = lvs
-                                  , pending_tokens = token:ptoks},
-                                 VCBrace pos,
-                                 1)           
+                                let
+                                  (n, lvs', ptoks') = additional_pops col lvs pos
+                                in
+                                 trace (show (n, lvs', ptoks'))
+                                 (t{ indent_levels = lvs'
+                                   , pending_tokens = ptoks'++ (token:ptoks)},
+                                  VCBrace pos,
+                                  n+1)           
+                                 
+            new_state npend ust' =
+              let
+                inp' = (take npend ['\t'..]) ++ inp
+              in
+               s{alex_ust=t', alex_inp=inp'}
           in 
-           Right (s{alex_ust=t'}, tok)
+           Right (new_state npend t', tok)
   in
     Alex f
 
@@ -171,9 +187,12 @@ other_token (pos, _, _, str) len =
 
 alexEOF :: Alex Token
 alexEOF = Alex $ 
-          (\s@AlexState{alex_ust=ust@AlexUserState{comment_depth=depth}} -> 
+          (\s@AlexState{alex_ust=ust@AlexUserState{comment_depth=depth, pending_tokens=ptoks}} -> 
             if depth == 0 then
-              Right (s, Eof)
+              if length ptoks == 0 then
+                Right (s, Eof)
+              else
+                Left "pend"
             else
               Left "unterminated `{-'"
           )
