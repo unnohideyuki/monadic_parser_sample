@@ -6,13 +6,7 @@ module Lexer where
 
 tokens :-
 
-
-<0> \t          { {- Tabs should not be merged because appropriate number of
-                     tabs are inserted and used to output pending tokens.
-                  -}
-                  white_space 
-                } 
-<0> [$white # \t]+                      { skip } 
+<0> $white                              { white_space }
 
 <0,comment> "{-"                        { mkL LOpenComment }
 <comment> [^$white]*"-}"                { mkL LCloseComment }
@@ -110,6 +104,8 @@ mkL c (pos, _, _, str) len =
 other_token :: AlexInput -> Int -> Alex Token
 other_token (pos, _, _, str) len =
   let
+    vpos = case pos of (AlexPn abs line _) -> (AlexPn abs line (-1)) -- pos for virtual tokens
+    
     tok_str = take len str
     token = Token (tok_str, pos)
     
@@ -121,9 +117,9 @@ other_token (pos, _, _, str) len =
             (n, l:lvs, ptoks)
           else
             if col == l then
-              (n + 1, l:lvs, ptoks ++ [Token (";", pos)])
+              (n + 1, l:lvs, ptoks ++ [Token (";", vpos)])
             else {- col < l -}
-              apop' col (n+1) lvs $ ptoks ++ [VCBrace pos]
+              apop' col (n+1) lvs $ ptoks ++ [VCBrace vpos]
       in
        apop' col 0 lvs []
     
@@ -142,13 +138,13 @@ other_token (pos, _, _, str) len =
                               (t{ indent_levels = col:lv:lvs
                                 , morrow = False 
                                 , pending_tokens = token:ptoks},
-                               VOBrace pos,
+                               VOBrace vpos,
                                1)
                             else
                               if col == lv then
                                 (t{ morrow = False
                                   , pending_tokens = token:ptoks},
-                                 Token (";", pos),
+                                 Token (";", vpos),
                                  1)
                               else
                                 let
@@ -157,7 +153,7 @@ other_token (pos, _, _, str) len =
                                  (t{ indent_levels = lvs'
                                    , morrow = False
                                    , pending_tokens = ptoks'++(token:ptoks)},
-                                  VCBrace pos,
+                                  VCBrace vpos,
                                   n+1)
                         else
                             if col > lv then
@@ -165,7 +161,7 @@ other_token (pos, _, _, str) len =
                             else
                               if col == lv then
                                 (t{pending_tokens = token:ptoks},
-                                 Token (";", pos),
+                                 Token (";", vpos),
                                  1)
                               else
                                 let
@@ -173,12 +169,12 @@ other_token (pos, _, _, str) len =
                                 in
                                  (t{ indent_levels = lvs'
                                    , pending_tokens = ptoks'++ (token:ptoks)},
-                                  VCBrace pos,
+                                  VCBrace vpos,
                                   n+1)           
                                  
             new_state npend ust' =
               let
-                inp' = (take npend ['\t','\t'..]) ++ inp
+                inp' = (take npend [' ',' '..]) ++ inp
               in
                s{alex_ust=t', alex_inp=inp'}
           in 
