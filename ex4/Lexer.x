@@ -10,7 +10,7 @@ tokens :-
 
 <0> $white                              { white_space }
 
-<0,comment> "{-"                        { mkL LOpenComment }
+<0,braced,comment> "{-"                 { mkL LOpenComment }
 <comment> [^$white]*"-}"                { mkL LCloseComment }
 <comment> $white+                       { skip }
 <comment> [^$white]+                    { skip }
@@ -57,21 +57,34 @@ mkL c (pos, _, _, str) len =
 
       -- "{-" starts a comment
       LOpenComment -> Alex $
-          (\s@AlexState{alex_ust=ust@AlexUserState{ comment_depth=depth }} -> 
+          (\s@AlexState{ alex_ust=ust@AlexUserState{ comment_depth=depth 
+                                                   , saved_scd=saved_scd
+                                                   }
+                       , alex_scd=scd
+                       } -> 
                 case alexMonadScan of
-                  Alex f -> f s{ alex_ust=ust{comment_depth = depth + 1}
-                               , alex_scd=comment
-                               }
+                  Alex f -> 
+                    let
+                      scd' = if depth == 0 then
+                               scd
+                             else
+                               saved_scd
+                    in
+                     f s{ alex_ust=ust{ comment_depth = depth + 1
+                                      , saved_scd = scd'
+                                      }
+                        , alex_scd=comment
+                        }
           )
 
       -- "-}" ends a comment
       LCloseComment -> Alex $
-                      (\s@AlexState{alex_ust=ust@AlexUserState{comment_depth=depth}} -> 
+                      (\s@AlexState{alex_ust=ust@AlexUserState{comment_depth=depth,saved_scd=saved_scd}} -> 
                         if depth > 0 then
                           case alexMonadScan of
                             Alex f -> f s{ alex_ust=ust{comment_depth = depth - 1}
                                          , alex_scd = if depth == 1 then 
-                                                        0 
+                                                        0
                                                       else 
                                                         comment
                                          }
@@ -194,12 +207,12 @@ alexEOF :: Alex Token
 alexEOF = Alex $ 
           (\s@AlexState{alex_ust=ust@AlexUserState{comment_depth=depth, pending_tokens=ptoks}} -> 
             if depth == 0 then
-              if True || length ptoks == 0 then
+              if length ptoks == 0 then
                 Right (s, Eof)
               else
                 Left $ "fatal: pending tokens left: " ++ show ptoks
             else
-              Left "unterminated `{-'"
+              Left $ "unterminated `{-': " ++ show depth
           )
 
 data Token = Token (String, AlexPosn)
