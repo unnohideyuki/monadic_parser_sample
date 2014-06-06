@@ -209,19 +209,7 @@ data Token = Token (String, AlexPosn)
            | OParen AlexPosn
            | CParen AlexPosn
            | Eof
-
-instance Show Token where
-    show (Token (s, pos)) = show s ++ prettyAlexPosn pos
-    show (OBrace pos) = show "{" ++ prettyAlexPosn pos
-    show (CBrace pos) = show "}" ++ prettyAlexPosn pos
-    show (VOBrace pos) = show "v{" ++ prettyAlexPosn pos
-    show (VCBrace pos) = show "v}" ++ prettyAlexPosn pos
-    show (OParen pos) = show "(" ++ prettyAlexPosn pos
-    show (CParen pos) = show ")" ++ prettyAlexPosn pos
-    show Eof              = "[EOF]"
-
-prettyAlexPosn (AlexPn _ line col) = 
-  " at line " ++ show line ++ ", col " ++ show col
+             deriving (Show)
 
 data AlexUserState = AlexUserState { comment_depth :: Int 
                                    , indent_levels :: [Int]
