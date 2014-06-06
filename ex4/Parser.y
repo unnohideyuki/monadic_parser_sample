@@ -36,6 +36,9 @@ token:     TOKEN                { [$1] }
 
 
 llist:    "{" tokens "}"                { ["{"] ++ $2 ++ ["}"] }
+{- shift/reduce conflict occurs with the following two rules.
+   the parser will try to shift (try to accept longer rule) first.
+-}
  |         vobrace tokens vcbrace       { ["{"] ++ $2 ++ ["}"] }
  |         vobrace tokens               {% Alex (\s -> missing_vcbrace s $2) }
 
