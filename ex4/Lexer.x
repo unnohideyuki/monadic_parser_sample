@@ -11,8 +11,8 @@ tokens :-
 <0> $white                              { white_space }
 
 <0,braced,comment> "{-"                 { mkL LOpenComment }
-<comment> [^$white]*"-}"                { mkL LCloseComment }
 <comment> $white+                       { skip }
+<comment> [^$white]*"-}"                { mkL LCloseComment }
 <comment> [^$white]+                    { skip }
 
 <0> "where" | "let" | "do" | "of"       { mkL LLayoutKeyword }
@@ -84,7 +84,7 @@ mkL c (pos, _, _, str) len =
                           case alexMonadScan of
                             Alex f -> f s{ alex_ust=ust{comment_depth = depth - 1}
                                          , alex_scd = if depth == 1 then 
-                                                        0
+                                                        saved_scd
                                                       else 
                                                         comment
                                          }
