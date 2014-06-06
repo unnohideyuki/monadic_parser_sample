@@ -33,7 +33,7 @@ data LexemeClass = LToken | LOpenComment | LCloseComment | LOBrace | LCBrace
 white_space :: AlexInput -> Int -> Alex Token
 white_space (pos, _, _, _) len = Alex f
   where
-    f s@AlexState{alex_ust=t@AlexUserState{pending_tokens=pend_toks}} =
+    f s@AlexState{alex_ust=t@AlexUserState{pending_tokens=pend_toks}, alex_pos=pos'} =
       case pend_toks of
         tok:toks -> Right (s{alex_ust=t{pending_tokens=toks}}, tok)
         [] -> case alexMonadScan of Alex f -> f s

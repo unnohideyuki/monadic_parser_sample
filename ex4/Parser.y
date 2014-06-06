@@ -14,8 +14,8 @@ import Lexer
 %tokentype { Token }
 
 %token
-TOKEN   { Token ($$, _) }
-SP_TOK  { Token' ($$, _) }
+TOKEN   { Token $$ }
+SP_TOK  { Token' $$ }
 "{"     { OBrace $$ }
 "}"     { CBrace $$ }
 vobrace { VOBrace $$ }
@@ -31,14 +31,14 @@ tokens_t:  token tokens_t       { $1 ++ $2 }
  |         {- empty -}          { [] }
 
 token:     TOKEN                { [$1] }
- |         "(" tokens ")"       { "(" : ($2 ++ [")"]) }
+ |         "(" tokens ")"       { ("(",$1) : ($2 ++ [(")",$3)]) }
  |         SP_TOK llist         { $1 : $2 }
 
 
-llist:     "{" tokens "}"               { ["{"] ++ $2 ++ ["}"] }
+llist:     "{" tokens "}"               { [("{",$1)] ++ $2 ++ [("}",$3)] }
            {- shift/reduce conflict occurs with the following two rules.
               the parser will try to shift (try to accept longer rule) first. -}
- |         vobrace tokens vcbrace       { ["{"] ++ $2 ++ ["}"] }
+ |         vobrace tokens vcbrace       { [("{",$1)] ++ $2 ++ [("}",$3)] }
  |         vobrace tokens               {% Alex (\s -> missing_vcbrace s $2 $1) }
 
 
@@ -46,7 +46,7 @@ llist:     "{" tokens "}"               { ["{"] ++ $2 ++ ["}"] }
 missing_vcbrace s@AlexState{alex_ust=t@AlexUserState{indent_levels=lvs}} toks pos=
   case lvs of
     [] -> Left $ "fatal error: " ++ show toks
-    _:lvs' -> Right (s{alex_ust=t{indent_levels=lvs'}}, ["{"] ++ toks ++ ["}"])
+    _:lvs' -> Right (s{alex_ust=t{indent_levels=lvs'}}, [("{",pos)] ++ toks ++ [("}",pos)])
   
 lexwrap :: (Token -> Alex a) -> Alex a
 lexwrap = (alexMonadScan >>=)
@@ -57,7 +57,7 @@ parseError t = alexError $ "parseError: " ++ show t
 parse s = runAlex s parser
 
 p' (Right []) = putStr "\n"
-p' (Right (x:xs)) = do
+p' (Right ((x,_):xs)) = do
   if x == ";" || x == "{" then putStr "\n" else putStr " "
   putStr x
   p' $ Right xs
