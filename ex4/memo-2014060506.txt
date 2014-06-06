@@ -1,0 +1,17 @@
+whitespace の挿入によって、以下の弊害あり：
+ - whitespace によって pending token を出力するので $white+ とまとめて受理できない
+   性能上不利
+ - whitespace 挿入によって、後続トークンの位置がずれる
+
+後者は実害あり
+
+case s of r -> i r wher i x = x
+
+のように、layout list の始まりが一行に二ヶ所以上ある場合に、二個目以降に問題あり。
+
+printable でないキャラクタを使えないかな。
+→ alexMove の仕様をみると、\t と \n 以外は１文字の幅は 1 になっているので無駄。
+
+→ whitespece 関数で、pending_token を吐いたときには column を一個戻すようにした。
+   うまくいってそう。
+

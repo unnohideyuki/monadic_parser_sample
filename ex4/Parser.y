@@ -64,5 +64,8 @@ p' (Right ((x,_):xs)) = do
 p' (Left s) = putStrLn s
 
 main :: IO ()
-main = getContents >>= p' . parse
+main = do 
+  s <- getContents 
+  (p' . parse) s
+  (print . parse) s
 }
