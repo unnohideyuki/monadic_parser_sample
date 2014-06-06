@@ -4,6 +4,8 @@ module Lexer where
 
 %wrapper "monadUserState"
 
+@tok = [^ \ \t \n \( \) \{ \}]+
+
 tokens :-
 
 <0> $white                              { white_space }
@@ -14,19 +16,20 @@ tokens :-
 <comment> [^$white]+                    { skip }
 
 <0> "where" | "let" | "do" | "of"       { mkL LLayoutKeyword }
+<braced> "where" | "let" | "do" | "of"  { mkL LLayoutKeyword2 }
 
 <0,braced> "{"                          { mkL LOBrace }
 <braced>   "}"                          { mkL LCBrace }
 <0,braced> "("                          { mkL LOParen }
 <0,braced> ")"                          { mkL LCParen }
 <braced>   $white                       { skip }
-<braced>   [^$white]+                   { mkL LToken }
+<braced>   @tok                         { mkL LToken }
 
-<0> [^ $white \( \) \{ \}]+         { other_token }
+<0> @tok                                { other_token }
 
 {
 data LexemeClass = LToken | LOpenComment | LCloseComment | LOBrace | LCBrace 
-                 | LOParen | LCParen | LLayoutKeyword
+                 | LOParen | LCParen | LLayoutKeyword | LLayoutKeyword2
                    deriving (Eq, Show)
 
 -- white_space : white spaces with the startcode == 0
@@ -93,12 +96,15 @@ mkL c (pos, _, _, str) len =
                    _ -> 0
          in
            Right (s{ alex_ust=ust{ indent_levels = lvs }, alex_scd=scd },
-                  OBrace pos))
+                  CBrace pos))
 
       -- where, let, do or of with the default startcode.
-      LLayoutKeyword -> Alex $
-        (\s@AlexState{ alex_ust=ust } ->
+      LLayoutKeyword -> Alex 
+         (\s@AlexState{ alex_ust=ust } ->
           Right (s{ alex_ust=ust{ morrow=True }}, Token' (t, pos)))
+
+      -- where, let, do or of between explicit braces
+      LLayoutKeyword2 -> Alex (\s-> Right (s, Token' (t, pos)))
 
 -- other_token : all other strings with the startcode == 0 
 other_token :: AlexInput -> Int -> Alex Token
@@ -208,6 +214,7 @@ data Token = Token (String, AlexPosn)
              deriving (Show)
 
 data AlexUserState = AlexUserState { comment_depth :: Int 
+                                   , saved_scd :: Int
                                    , indent_levels :: [Int]
                                    , morrow :: Bool
                                    , pending_tokens :: [Token]
@@ -215,6 +222,7 @@ data AlexUserState = AlexUserState { comment_depth :: Int
 
 alexInitUserState :: AlexUserState
 alexInitUserState = AlexUserState { comment_depth = 0 
+                                  , saved_scd = 0
                                   , indent_levels = [0]
                                   , morrow = False
                                   , pending_tokens = []
