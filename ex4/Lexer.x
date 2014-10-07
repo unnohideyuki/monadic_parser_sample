@@ -10,7 +10,7 @@ tokens :-
 
 <0> $white                              { white_space }
 
-<0,braced,comment> "{-"                 { mkL LOpenComment }
+<0,braced,comment> "{-"                 { mkLOpenComment }
 <comment> $white+                       { skip }
 <comment> [^$white]*"-}"                { mkL LCloseComment }
 <comment> [^$white]+                    { skip }
@@ -20,10 +20,10 @@ tokens :-
 
 <0,braced> "{"                          { mkL LOBrace }
 <braced>   "}"                          { mkL LCBrace }
-<0,braced> "("                          { mkL LOParen }
-<0,braced> ")"                          { mkL LCParen }
+<0,braced> "("                          { mkLOParen }
+<0,braced> ")"                          { mkLCParen }
 <braced>   $white                       { skip }
-<braced>   @tok                         { mkL LToken }
+<braced>   @tok                         { mkLToken }
 
 <0> @tok                                { other_token }
 
@@ -55,6 +55,27 @@ moveColumn x = Alex $ \st ->
 getCommentDepth :: Alex Int
 getCommentDepth = Alex $ \st -> Right (st, comment_depth $ alex_ust st)
 
+setCommentDepth :: Int -> Alex ()
+setCommentDepth d = Alex $ \st ->
+  let
+    ust = alex_ust st
+    ust' = ust{comment_depth=d}
+    st' = st{alex_ust=ust'}
+  in
+    Right (st', ())
+
+getSavedScd :: Alex Int
+getSavedScd = Alex $ \st -> Right (st, saved_scd $ alex_ust st)
+
+saveScd :: Int -> Alex ()
+saveScd scd = Alex $ \st ->
+  let
+    ust = alex_ust st
+    ust' = ust{saved_scd=scd}
+    st' = st{alex_ust=ust'}
+  in
+    Right (st', ())
+
 -- white_space : white spaces with the startcode == 0
 white_space _ _ = do
   ptoks <- getPendingToks
@@ -65,41 +86,33 @@ white_space _ _ = do
     [] -> alexMonadScan
 
 -- mkL
+mkLToken :: AlexAction Token
+mkLToken (pos, _, _, str) len = return $ Token (take len str, pos)
+
+mkLOParen :: AlexAction Token
+mkLOParen (pos, _, _, _) _ = return $ OParen pos
+mkLCParen :: AlexAction Token
+mkLCParen (pos, _, _, _) _ = return $ CParen pos
+
+mkLOpenComment :: AlexAction Token
+mkLOpenComment _ _ = 
+  do
+    depth <- getCommentDepth
+    scd <- alexGetStartCode
+    setCommentDepth (depth + 1)
+    if depth == 0 then 
+      saveScd scd
+    else
+      return ()
+    alexSetStartCode comment
+    alexMonadScan
+
 mkL :: LexemeClass -> AlexInput -> Int -> Alex Token
 mkL c (pos, _, _, str) len =
   let
     t = take len str
   in
     case c of
-      -- tokens with between explicit braces (startcode == braced)
-      LToken -> Alex $ (\s -> Right (s, Token (t, pos)))
-      
-      -- parentheses
-      LOParen -> Alex $ (\s -> Right (s, OParen pos))
-      LCParen -> Alex $ (\s -> Right (s, CParen pos))
-
-      -- "{-" starts a comment
-      LOpenComment -> Alex $
-          (\s@AlexState{ alex_ust=ust@AlexUserState{ comment_depth=depth 
-                                                   , saved_scd=saved_scd
-                                                   }
-                       , alex_scd=scd
-                       } -> 
-                case alexMonadScan of
-                  Alex f -> 
-                    let
-                      scd' = if depth == 0 then
-                               scd
-                             else
-                               saved_scd
-                    in
-                     f s{ alex_ust=ust{ comment_depth = depth + 1
-                                      , saved_scd = scd'
-                                      }
-                        , alex_scd=comment
-                        }
-          )
-
       -- "-}" ends a comment
       LCloseComment -> Alex $
                       (\s@AlexState{alex_ust=ust@AlexUserState{comment_depth=depth,saved_scd=saved_scd}} -> 
@@ -223,8 +236,6 @@ other_token (pos, _, _, str) len =
            Right (new_state npend t', tok)
   in
     Alex f
-
-
 
 alexEOF :: Alex Token
 alexEOF = do
