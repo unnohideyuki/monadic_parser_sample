@@ -52,6 +52,8 @@ moveColumn x = Alex $ \st ->
   in
     Right(st{alex_pos=AlexPn abs line (col + x)}, ())
 
+getCommentDepth :: Alex Int
+getCommentDepth = Alex $ \st -> Right (st, comment_depth $ alex_ust st)
 
 -- white_space : white spaces with the startcode == 0
 white_space _ _ = do
@@ -225,16 +227,16 @@ other_token (pos, _, _, str) len =
 
 
 alexEOF :: Alex Token
-alexEOF = Alex $ 
-          (\s@AlexState{alex_ust=ust@AlexUserState{comment_depth=depth, pending_tokens=ptoks}} -> 
-            if depth == 0 then
-              if length ptoks == 0 then
-                Right (s, Eof)
-              else
-                Left $ "fatal: pending tokens left: " ++ show ptoks
-            else
-              Left $ "unterminated `{-': " ++ show depth
-          )
+alexEOF = do
+  depth <- getCommentDepth
+  ptoks <- getPendingToks
+  if depth == 0 then
+    if length ptoks == 0 then
+      return Eof
+    else
+      alexError $ "fatal: pending tokens left: " ++ show ptoks
+  else
+    alexError $ "unterminated `{-': " ++ show depth
 
 data Token = Token (String, AlexPosn)
            | Token' (String, AlexPosn)
