@@ -32,14 +32,35 @@ data LexemeClass = LToken | LOpenComment | LCloseComment | LOBrace | LCBrace
                  | LOParen | LCParen | LLayoutKeyword | LLayoutKeyword2
                    deriving (Eq, Show)
 
+-- State Utility
+getPendingToks :: Alex [Token]
+getPendingToks = Alex $ \st -> Right (st, pending_tokens $ alex_ust st)
+
+setPendingToks :: [Token] -> Alex ()
+setPendingToks toks = Alex $ \st ->
+  let
+    ust = alex_ust st
+    ust' = ust{pending_tokens=toks}
+    st' = st{alex_ust=ust'}
+  in
+    Right (st', ())
+
+moveColumn :: Int -> Alex ()
+moveColumn x = Alex $ \st ->
+  let
+    (AlexPn abs line col) = alex_pos st
+  in
+    Right(st{alex_pos=AlexPn abs line (col + x)}, ())
+
+
 -- white_space : white spaces with the startcode == 0
-white_space :: AlexInput -> Int -> Alex Token
-white_space (pos, _, _, _) len = Alex f
-  where
-    f s@AlexState{alex_ust=t@AlexUserState{pending_tokens=pend_toks}, alex_pos=(AlexPn abs line col)} =
-      case pend_toks of
-        tok:toks -> Right (s{alex_ust=t{pending_tokens=toks}, alex_pos=(AlexPn abs line (col-1))}, tok)
-        [] -> case alexMonadScan of Alex f -> f s
+white_space _ _ = do
+  ptoks <- getPendingToks
+  case ptoks of
+    tok:toks -> do setPendingToks toks
+                   moveColumn (-1)
+                   return tok
+    [] -> alexMonadScan
 
 -- mkL
 mkL :: LexemeClass -> AlexInput -> Int -> Alex Token
