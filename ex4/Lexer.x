@@ -12,14 +12,14 @@ tokens :-
 
 <0,braced,comment> "{-"                 { mkLOpenComment }
 <comment> $white+                       { skip }
-<comment> [^$white]*"-}"                { mkL LCloseComment }
+<comment> [^$white]*"-}"                { mkLCloseComment }
 <comment> [^$white]+                    { skip }
 
-<0> "where" | "let" | "do" | "of"       { mkL LLayoutKeyword }
-<braced> "where" | "let" | "do" | "of"  { mkL LLayoutKeyword2 }
+<0> "where" | "let" | "do" | "of"       { mkLLayoutKeyword }
+<braced> "where" | "let" | "do" | "of"  { mkLLayoutKeyword2 }
 
-<0,braced> "{"                          { mkL LOBrace }
-<braced>   "}"                          { mkL LCBrace }
+<0,braced> "{"                          { mkLOBrace }
+<braced>   "}"                          { mkLCBrace }
 <0,braced> "("                          { mkLOParen }
 <0,braced> ")"                          { mkLCParen }
 <braced>   $white                       { skip }
@@ -33,6 +33,9 @@ data LexemeClass = LToken | LOpenComment | LCloseComment | LOBrace | LCBrace
                    deriving (Eq, Show)
 
 -- State Utility
+nop :: Monad m => m ()
+nop = return ()
+
 getPendingToks :: Alex [Token]
 getPendingToks = Alex $ \st -> Right (st, pending_tokens $ alex_ust st)
 
@@ -76,6 +79,49 @@ saveScd scd = Alex $ \st ->
   in
     Right (st', ())
 
+pushCtx :: Int -> Alex ()
+pushCtx n = Alex $ \st ->
+  let
+    ust = alex_ust st
+    ms = indent_levels ust
+    ust' = ust{indent_levels=(n:ms)}
+  in
+    Right (st{alex_ust=ust'}, ())
+
+popCtx :: Alex Int
+popCtx = Alex $ \st ->
+  let
+    ust = alex_ust st
+    ms' = indent_levels ust
+  in
+    case ms' of
+      (m:ms) -> let ust' = ust{indent_levels=ms}
+                    st' = st{alex_ust=ust'}
+                in
+                  Right (st', m)
+      _ -> Left "empty layout context."
+
+peepCtx :: Alex Int
+peepCtx = Alex $ \st ->
+  let
+    ms' = indent_levels $ alex_ust st
+  in
+    case ms' of
+      (m:ms) -> Right (st, m)
+      _ -> Left "empty layout context."
+
+setMorrow :: Alex ()
+setMorrow = Alex $ \st ->
+  let
+    ust = alex_ust st
+    ust' = ust{morrow=True}
+    st' = st{alex_ust=ust'}
+  in
+    Right (st', ())
+
+getMorrow :: Alex Bool
+getMorrow = Alex $ \st -> Right (st, morrow $ alex_ust st)
+
 -- white_space : white spaces with the startcode == 0
 white_space _ _ = do
   ptoks <- getPendingToks
@@ -103,57 +149,52 @@ mkLOpenComment _ _ =
     if depth == 0 then 
       saveScd scd
     else
-      return ()
+      nop
     alexSetStartCode comment
     alexMonadScan
 
-mkL :: LexemeClass -> AlexInput -> Int -> Alex Token
-mkL c (pos, _, _, str) len =
-  let
-    t = take len str
-  in
-    case c of
-      -- "-}" ends a comment
-      LCloseComment -> Alex $
-                      (\s@AlexState{alex_ust=ust@AlexUserState{comment_depth=depth,saved_scd=saved_scd}} -> 
-                        if depth > 0 then
-                          case alexMonadScan of
-                            Alex f -> f s{ alex_ust=ust{comment_depth = depth - 1}
-                                         , alex_scd = if depth == 1 then 
-                                                        saved_scd
-                                                      else 
-                                                        comment
-                                         }
-                        else
-                          Right (s, Token (t, pos))
-                      )
+mkLCloseComment :: AlexAction Token
+mkLCloseComment (pos, _, _, str) len =
+  do
+    let token = Token (take len str, pos)
+    depth <- getCommentDepth
+    if depth > 0 then do
+      setCommentDepth (depth - 1)
+      scd <- getSavedScd
+      if depth == 1 then
+        alexSetStartCode scd
+      else
+        nop
+      alexMonadScan
+    else
+      return token
 
-      -- "{", explicit open brace starts `braced' state and 
-      -- push a (-1) to the indente levels.
-      LOBrace -> Alex $
-       (\s@AlexState{ alex_ust = ust@AlexUserState{ indent_levels = lvs }} ->
-         Right (s{ alex_ust=ust{ indent_levels = (-1):lvs }, alex_scd=braced },
-                OBrace pos))
+mkLOBrace :: AlexAction Token
+mkLOBrace (pos, _, _, _) _ = do
+  pushCtx (-1)
+  alexSetStartCode braced
+  return (OBrace pos)
 
-      -- "}", explicit close brace ends a `braced':
-      -- pos a (-1) from the indente levels and chenge the startcode if necessary.
-      LCBrace -> Alex $
-       (\s@AlexState{ alex_ust = ust@AlexUserState{ indent_levels = lv:lvs }} ->
-         let
-           scd = case lvs of
-                   (-1):xs -> braced
-                   _ -> 0
-         in
-           Right (s{ alex_ust=ust{ indent_levels = lvs }, alex_scd=scd },
-                  CBrace pos))
+mkLCBrace :: AlexAction Token
+mkLCBrace (pos, _, _, _) _ = do
+  popCtx
+  m <- peepCtx
+  if m == -1 then 
+    nop 
+  else 
+    alexSetStartCode 0
+  return (CBrace pos)
 
-      -- where, let, do or of with the default startcode.
-      LLayoutKeyword -> Alex 
-         (\s@AlexState{ alex_ust=ust } ->
-          Right (s{ alex_ust=ust{ morrow=True }}, Token' (t, pos)))
+mkLLayoutKeyword :: AlexAction Token
+mkLLayoutKeyword (pos, _, _, str) len = do
+  let token = Token' (take len str, pos)
+  setMorrow
+  return token
 
-      -- where, let, do or of between explicit braces
-      LLayoutKeyword2 -> Alex (\s-> Right (s, Token' (t, pos)))
+mkLLayoutKeyword2 :: AlexAction Token
+mkLLayoutKeyword2 (pos, _, _, str) len = do
+  let token = Token' (take len str, pos)
+  return token
 
 -- other_token : all other strings with the startcode == 0 
 other_token :: AlexInput -> Int -> Alex Token
