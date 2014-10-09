@@ -1,5 +1,6 @@
 {
 module Lexer where
+-- TODO: "module" on the morrow
 }
 
 %wrapper "monadUserState"
@@ -25,7 +26,7 @@ tokens :-
 <braced>   $white                       { skip }
 <braced>   @tok                         { mkLToken }
 
-<0> @tok                                { other_token }
+<0> @tok                                { layout_token }
 
 {
 data LexemeClass = LToken | LOpenComment | LCloseComment | LOBrace | LCBrace 
@@ -45,6 +46,19 @@ setPendingToks toks = Alex $ \st ->
     ust = alex_ust st
     ust' = ust{pending_tokens=toks}
     st' = st{alex_ust=ust'}
+  in
+    Right (st', ())
+
+pushToks :: [Token] -> Alex ()
+pushToks ts = Alex $ \st ->
+  let
+    ust = alex_ust st
+    toks = pending_tokens ust
+    ust' = ust{pending_tokens=ts ++ toks}
+    n = length ts
+    inp = alex_inp st
+    inp' = (take n [' ',' '..]) ++ inp
+    st' = st{alex_ust=ust', alex_inp=inp'}
   in
     Right (st', ())
 
@@ -110,11 +124,11 @@ peepCtx = Alex $ \st ->
       (m:ms) -> Right (st, m)
       _ -> Left "empty layout context."
 
-setMorrow :: Alex ()
-setMorrow = Alex $ \st ->
+setMorrow :: Bool -> Alex ()
+setMorrow b = Alex $ \st ->
   let
     ust = alex_ust st
-    ust' = ust{morrow=True}
+    ust' = ust{morrow=b}
     st' = st{alex_ust=ust'}
   in
     Right (st', ())
@@ -188,7 +202,7 @@ mkLCBrace (pos, _, _, _) _ = do
 mkLLayoutKeyword :: AlexAction Token
 mkLLayoutKeyword (pos, _, _, str) len = do
   let token = Token' (take len str, pos)
-  setMorrow
+  setMorrow True
   return token
 
 mkLLayoutKeyword2 :: AlexAction Token
@@ -196,87 +210,42 @@ mkLLayoutKeyword2 (pos, _, _, str) len = do
   let token = Token' (take len str, pos)
   return token
 
--- other_token : all other strings with the startcode == 0 
-other_token :: AlexInput -> Int -> Alex Token
-other_token (pos, _, _, str) len =
-  let
-    vpos = case pos of (AlexPn abs line _) -> (AlexPn abs line (-1)) -- pos for virtual tokens
-    
-    tok_str = take len str
-    token = Token (tok_str, pos)
-    
-    additional_pops col lvs pos = 
-      let
-        apop' col n [] ptoks = (n, [], ptoks)
-        apop' col n (l:lvs) ptoks =
-          if l == -1 || col > l then
-            (n, l:lvs, ptoks)
+layout_token :: AlexAction Token
+layout_token (pos@(AlexPn abs line col), _, _, str) len =
+  do
+    morrow <- getMorrow
+    setMorrow False
+    ctx <- peepCtx
+    if morrow then
+      if col > ctx then
+        do pushCtx col
+           pushToks [tok]
+           return $ VOBrace vpos
+      else
+        do pushToks [VOBrace vpos]
+           pushToks [VCBrace vpos]
+           toks <- f []
+           g (toks ++ [tok])
+    else
+      do toks <- f []
+         g (toks ++ [tok])
+  where
+      tok = Token (take len str, pos)
+      vpos = AlexPn abs line (-1)
+      semi = Token (";", vpos)
+      f xs = do
+        ctx' <- peepCtx
+        if col < ctx' then
+          do popCtx
+             f $ xs ++ [VCBrace vpos]
+        else
+          if col == ctx' then
+            return $ xs ++ [semi]
           else
-            if col == l then
-              (n + 1, l:lvs, ptoks ++ [Token (";", vpos)])
-            else {- col < l -}
-              apop' col (n+1) lvs $ ptoks ++ [VCBrace vpos]
-      in
-       apop' col 0 lvs []
-    
-    f s@AlexState{alex_ust=t@AlexUserState{ indent_levels = lv:lvs
-                                          , morrow = morrow
-                                          , pending_tokens = ptoks
-                                          },
-                  alex_inp=inp
-                 } =
-      case pos of
-        AlexPn _ line col ->
-          let
-            (t', tok, npend) = 
-              if morrow then
-                            if col > lv then
-                              (t{ indent_levels = col:lv:lvs
-                                , morrow = False 
-                                , pending_tokens = token:ptoks},
-                               VOBrace vpos,
-                               1)
-                            else
-                              if col == lv then
-                                (t{ morrow = False
-                                  , pending_tokens = token:ptoks},
-                                 Token (";", vpos),
-                                 1)
-                              else
-                                let
-                                  (n, lvs', ptoks') = additional_pops col lvs pos
-                                in
-                                 (t{ indent_levels = lvs'
-                                   , morrow = False
-                                   , pending_tokens = ptoks'++(token:ptoks)},
-                                  VCBrace vpos,
-                                  n+1)
-                        else
-                            if col > lv then
-                              (t, token, 0)
-                            else
-                              if col == lv then
-                                (t{pending_tokens = token:ptoks},
-                                 Token (";", vpos),
-                                 1)
-                              else
-                                let
-                                  (n, lvs', ptoks') = additional_pops col lvs pos
-                                in
-                                 (t{ indent_levels = lvs'
-                                   , pending_tokens = ptoks'++ (token:ptoks)},
-                                  VCBrace vpos,
-                                  n+1)           
-                                 
-            new_state npend ust' =
-              let
-                inp' = (take npend [' ',' '..]) ++ inp
-              in
-               s{alex_ust=t', alex_inp=inp'}
-          in 
-           Right (new_state npend t', tok)
-  in
-    Alex f
+            return xs
+      g (t:ts) = do
+        pushToks ts
+        return t
 
 alexEOF :: Alex Token
 alexEOF = do
